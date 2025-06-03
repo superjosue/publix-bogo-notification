@@ -1,6 +1,8 @@
-from bs4 import BeautifulSoup, ResultSet
-import requests
+from dataclasses import dataclass
 from enum import Enum
+
+import requests
+from bs4 import BeautifulSoup, ResultSet
 
 from publix_bogos.utils import is_any_in_text
 
@@ -11,18 +13,13 @@ class BogoType(Enum):
     B2G1 = 'B2G1'
 
 
-class BogoItem():
-    def __init__(self, name: str, effective_dates: str, bogo_type: BogoType):
-        """Initializes BOGO Item
+@dataclass(slots=True)
+class BogoItem:
+    """Container for a single BOGO item."""
 
-        Args:
-            name (str): Name of the BOGO item
-            effective_dates (str): Effective dates of the BOGO item
-            bogo_type (BogoType): Type of BOGO
-        """
-        self.name = name
-        self.effective_dates = effective_dates
-        self.type = bogo_type
+    name: str
+    effective_dates: str
+    type: BogoType
 
 
 bogo_compare_text = [
@@ -53,12 +50,11 @@ def retrieve_sales_webpage(url: str) -> BeautifulSoup:
     Returns:
         BeautifulSoup: BeautifulSoup object containing the webpage content
     """
-    response: requests.Response = requests.get(url, timeout=5)
-    if response.status_code != 200:
-        raise Exception("Unsuccessful status code returned")
+    response = requests.get(url, timeout=5)
+    response.raise_for_status()
 
     if not response.content:
-        raise Exception("No content returned")
+        raise ValueError("No content returned")
 
     return BeautifulSoup(response.content, "html.parser")
 
@@ -69,38 +65,23 @@ def parse_webpage_bogos(webpage_content: BeautifulSoup) -> list[BogoItem]:
     Returns:
         list[BogoItem]]: List of bogo items
     """
-    bogo_items = list[BogoItem]()
+    bogo_items: list[BogoItem] = []
 
-    webpage_items: ResultSet[any] = webpage_content.findAll(
-        "div", attrs={"class": "theTileContainer"}
-    )
-
-    for item in webpage_items:
-        item_deal_div: ResultSet[any] = item.find("div", attrs={"class": "deal"})
-
-        # div could not be found so continue to the next item
-        if item_deal_div is None:
+    for item in webpage_content.find_all("div", class_="theTileContainer"):
+        deal_div = item.find("div", class_="deal")
+        if not deal_div:
             continue
 
-        item_sale_text = item_deal_div.find(
-            "span", attrs={"class": "ellipsis_text"}
-        ).text
-        bogo_type = get_bogo_type(item_sale_text)
+        sale_text = deal_div.find("span", class_="ellipsis_text").text
+        bogo_type = get_bogo_type(sale_text)
+        if bogo_type == BogoType.NOBOGO:
+            continue
 
-        # save item and bogo type to the list of items to return
-        if bogo_type != BogoType.NOBOGO:
-            # Get item name
-            item_name: str = (
-                item.find("div", attrs={"class": "title"})
-                .find("h2", attrs={"class": "ellipsis_text"})
-                .text
-            )
-            effective_dates: str = (
-                item.find("div", attrs={"class": "validDates"})
-                .find("span")
-                .text
-            )
-            bogo_items.append(BogoItem(item_name, effective_dates, bogo_type))
+        item_name = item.find("div", class_="title").find(
+            "h2", class_="ellipsis_text"
+        ).text
+        effective_dates = item.find("div", class_="validDates").find("span").text
+        bogo_items.append(BogoItem(item_name, effective_dates, bogo_type))
 
     return bogo_items
 
@@ -114,14 +95,11 @@ def get_bogo_type(item_sale_text: str) -> BogoType:
     Returns:
         BogoType: BOGO type
     """
-    bogo_type = BogoType.NOBOGO
-
     if is_bogo(item_sale_text):
-        bogo_type = BogoType.BOGO
-    elif is_b2g1(item_sale_text):
-        bogo_type = BogoType.B2G1
-
-    return bogo_type
+        return BogoType.BOGO
+    if is_b2g1(item_sale_text):
+        return BogoType.B2G1
+    return BogoType.NOBOGO
 
 
 def is_bogo(item_sale_text: str) -> bool:

@@ -20,45 +20,33 @@ def main():
 
     logger.info('Config values:')
 
-    keywords = []
-    url = ''
-    prefix_text = ''
-    postfix_text = ''
-    no_bogo_text = 'No BOGOs'
-    bogo_config = None
-
-
     if 'BOGO' not in config:
         logger.error('No BOGO config found. Exiting...')
         return
-    else:
-        bogo_config = config['BOGO']
-        if 'keywords' not in bogo_config or 'url' not in bogo_config:
-            logger.error('"keywords" or "url" was provided in the config. Exiting...')
-            return
-        else:
-            keywords = bogo_config['keywords'].split(',')
-            logger.info('keywords: ' + str(keywords))
-            url = bogo_config['url']
-            logger.info('url: ' + url)
 
-    if 'prefix_text' in bogo_config:
-        prefix_text = bogo_config['prefix_text']
-        logger.info('prefix_text: ' + prefix_text)
+    bogo_config = config['BOGO']
+    if not bogo_config.get('keywords') or not bogo_config.get('url'):
+        logger.error('"keywords" or "url" was provided in the config. Exiting...')
+        return
 
-    if 'postfix_text' in bogo_config:
-        postfix_text = bogo_config['postfix_text']
-        logger.info('postfix_text: ' + postfix_text)
+    keywords = bogo_config['keywords'].split(',')
+    url = bogo_config['url']
+    prefix_text = bogo_config.get('prefix_text', '')
+    postfix_text = bogo_config.get('postfix_text', '')
+    no_bogo_text = bogo_config.get('no_bogo_text', 'No BOGOs')
 
-    if 'no_bogo_text' in bogo_config:
-        no_bogo_text = bogo_config['no_bogo_text']
-        logger.info('no_bogo_text: ' + no_bogo_text)
+    logger.info('keywords: %s', keywords)
+    logger.info('url: %s', url)
+    if prefix_text:
+        logger.info('prefix_text: %s', prefix_text)
+    if postfix_text:
+        logger.info('postfix_text: %s', postfix_text)
+    logger.info('no_bogo_text: %s', no_bogo_text)
 
     bogo_items = retrieve_bogos(url)
     filtered_prettified_bogo_items = filter_prettify_items(bogo_items, keywords, prefix_text, postfix_text)
 
-    # send pretty text to destination
-    publish_bogo_items(filtered_prettified_bogo_items, config)
+    publish_bogo_items(filtered_prettified_bogo_items or [no_bogo_text], config)
 
 
 def set_logging(config: configparser.RawConfigParser):
@@ -113,7 +101,7 @@ def publish_bogo_items(bogo_items: list[str], config: configparser.RawConfigPars
         return
 
     for producer_type in config['BOGO']['producers'].split(','):
-        producer: BogoProducer = build_producer(producer_type, config[producer_type])
+        producer = build_producer(producer_type, config[producer_type])
         producer.publish_bogo(bogo_items)
 
 
@@ -129,13 +117,13 @@ def build_producer(producer_type, config: configparser.RawConfigParser) -> BogoP
         BogoProducer: Built producer using the type and the config.
     """
     config_dict = dict(config)
-    match producer_type:
-        case 'twitter_producer':
-            return TwitterBogoProducer(config_dict)
-        case 'logging_producer':
-            return LoggingBogoProducer(config_dict)
-        case _:
-            raise LookupError(f'No producer is found for type "{producer_type}"')
+    producers = {
+        'twitter_producer': TwitterBogoProducer,
+        'logging_producer': LoggingBogoProducer,
+    }
+    if producer_type not in producers:
+        raise LookupError(f'No producer is found for type "{producer_type}"')
+    return producers[producer_type](config_dict)
 
 
 def lambda_handler(event, context):
@@ -143,3 +131,4 @@ def lambda_handler(event, context):
 
 if __name__ == '__main__':
     main()
+

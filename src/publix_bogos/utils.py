@@ -25,7 +25,6 @@ def is_any_whole_word_in_text(text: str, compare_list: list[str]) -> bool:
     Returns:
         bool: true if a whole word in the compare list is in the text, otherwise false
     """
-    for text_substring in text.split(' '):
-        if any(s == text_substring.lower() for s in compare_list):
-            return True
-    return False
+    words = set(text.lower().split())
+    return any(word in words for word in compare_list)
+

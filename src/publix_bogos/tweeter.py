@@ -18,12 +18,10 @@ class TwitterBogoProducer(BogoProducer):
         super().__init__()
         self.logger = logging.getLogger(__name__)
         
-        required_config = ['consumer_key', 'consumer_secret', 'access_token', 'access_token_secret']
-        missing_config = [key for key in required_config if (key not in config or not config[key])]
-        
-        if missing_config:
-            missing_keys = ', '.join(missing_config)
-            raise ValueError(f'config is missing required values for [{missing_keys}]')
+        required = {'consumer_key', 'consumer_secret', 'access_token', 'access_token_secret'}
+        missing = [key for key in required if not config.get(key)]
+        if missing:
+            raise ValueError(f"config is missing required values for [{', '.join(missing)}]")
         
         self._config = config
     
